@@ -1,0 +1,5 @@
+# Excluir a pasta "imagens" no caminho especificado
+/Tese-aumento-de-dados-reconhecimento-de-ferrugem-em-cafe/files/imagens/
+
+# Excluir a pasta "outputs" no caminho especificado
+/Tese-aumento-de-dados-reconhecimento-de-ferrugem-em-cafe/src/main/outputs/
