@@ -56,7 +56,7 @@ def plot_loss_accuracy(train_losses, val_losses, train_accs, val_accs, model_nam
     plt.legend()
     
     plt.savefig(f'{save_dir}/{model_name}_fold_{fold}_loss_acc.pdf')
-    plt.show()
+    #plt.show()
 
 def generate_classification_report(model, dataloader,class_names, device='gpu'):
     # Define o modelo para o dispositivo correto (CPU ou GPU)
