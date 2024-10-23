@@ -18,19 +18,25 @@ from torch.autograd import Variable
 from torchvision import utils
 from sklearn import metrics
 from sklearn.model_selection import KFold
-import splitfolders
 import gc 
-from NNs import initialize_model, train_model
-from relatorios import plot_confusion_matrix, plot_loss_accuracy, generate_classification_report 
-from Augmentation_funcs import  ConditionalAugmentation
-#from AdjustColorSpace import *
-import splitfolders
+from util.NNs import initialize_model, train_model
+from util.relatorios import plot_confusion_matrix, plot_loss_accuracy, generate_classification_report
+from util.Augmentation_funcs import  ConditionalAugmentation
+from util.AdjustColorSpace import *
+from util.AddShadow import *
+from util.AdjustHueSaturation import *
+from util.ApplyDirectionalLight import *
+#import splitfolders
 import gc
 import torch
 import math
 import cv2
-#from openslide import OpenSlideError
+
+
 torch.cuda.empty_cache()
+# Verifique se a GPU está disponível
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
 gc.collect()
 
 MAGNIFICATION_SCALE = {
@@ -46,32 +52,12 @@ MAGNIFICATION_SCALE = {
 }
 def get_scale_by_magnification(magnification):
     return MAGNIFICATION_SCALE[str(magnification)]
-# retirar depois
-def adjust_color_space(image):
-        # Converter a imagem PIL para um array NumPy (RGB)
-    image_np = np.array(image)
-    # Converter a imagem para o espaço de cores LAB
-    lab_image = cv2.cvtColor(image_np, cv2.COLOR_RGB2LAB)
-    # Separar os canais L, A, B
-    l_channel, a_channel, b_channel = cv2.split(lab_image)
-    # Ajustar os canais
-     #Aumentar o contraste do canal de luminosidade
-    l_channel = cv2.equalizeHist(l_channel)
-    # Ajuste opcional: aumentar ou diminuir o contraste de cor nos canais A e B
-    a_channel = cv2.add(a_channel, 10)  # Pequeno aumento na tonalidade verde-vermelha
-    b_channel = cv2.add(b_channel, 10)  # Pequeno aumento na tonalidade azul-amarela
-    # Reunir os canais ajustados
-    adjusted_lab_image = cv2.merge((l_channel, a_channel, b_channel))
-    # Converter de volta para o espaço de cores RGB
-    adjusted_image = cv2.cvtColor(adjusted_lab_image, cv2.COLOR_LAB2RGB)
-    #Converter de volta para PIL antes de retornar
-    return Image.fromarray(adjusted_image)
-    #print('aumentou o dado')
+
 
 def main():
-    dataset_dir = "../../datasets"
-    model_dir = "../../models"
-    color_model = "LAB"
+    #dataset_dir = "C:/Users/Augusto/Documents/tese/Tese-aumento-de-dados-reconhecimento-de-ferrugem-em-cafe/files/imagens/Photos"
+    #model_dir = "C:/Users/Augusto/Documents/tese/Tese-aumento-de-dados-reconhecimento-de-ferrugem-em-cafe/files/classificadores"
+    #color_model = "LAB"
     magnification = 0.625
     scale = get_scale_by_magnification(magnification)
     tile_size = 20
@@ -90,8 +76,8 @@ def main():
     torch.backends.cudnn.deterministic = True
     # Define o caminho base do diretório de imagens divididas 
     #base_dir = r'C:\Users\Augusto\Documents\tese\files\imagens\Photos'
-    base_dir = r"../../datasets"
-    for model in ['resnet', 'alexnet']:#, 'vgg', 'squeezenet', 'densenet', 'inception']:
+    base_dir = r"C:/Users/Augusto/Documents/tese/Tese-aumento-de-dados-reconhecimento-de-ferrugem-em-cafe/files/imagens/Photos"
+    for model in ['resnet', 'alexnet', 'vgg', 'squeezenet', 'densenet', 'inception']:
         
         basic_parameters = {
         #'num_classes' : 2,
@@ -101,10 +87,10 @@ def main():
         'batch_size' : 32,
         'lr' : 0.001, # Taxa de aprendizado
         'mm' : 0.9, # Mommentum
-        'epochs' : 10,
+        'epochs' : 5,
         'model_name' : model, # Models to choose from [resnet, alexnet, vgg, squeezenet, densenet, inception]
         'criterion' : nn.CrossEntropyLoss(), # Função de perda
-        'data_augmentation' :['4'] #['0','1','2','3','4','5']
+        'data_augmentation' :['0','1','2','3','4','5']
         #['0','1','2','3'] # 0 - None, 1 - none + aug-basic, 2 - none + aug-avanced, 3 -aug-basic, 4 - aug-avanced, 5 - aug-basic + aug-avanced
         }
         model_ft, input_size = initialize_model(basic_parameters.get('model_name'), basic_parameters.get('num_classes'))
@@ -119,9 +105,12 @@ def main():
         ])
         advanced_augmentation = transforms.Compose([
             transforms.Resize((224, 224)),
-            transforms.Lambda(adjust_color_space),  # Ajuste de cor
+            transforms.Lambda(lambda img: AdjustColorSpace()(img)),  # Chamada direta da classe
+            transforms.Lambda(lambda img: AddShadow()(img)),  # Chamada direta da classe
+            transforms.Lambda(lambda img: AdjustHueSaturation(img)),  # Chamada da versão parcial
+            transforms.Lambda(lambda img: ApplyDirectionalLight(img)),  # Chamada da versão parcial
             transforms.GaussianBlur(kernel_size=(5, 9), sigma=(0.1, 5))  # Desfoque
-        ])  
+        ]) 
         for type_aug in basic_parameters.get('data_augmentation'):
             # Obtenção do parâmetro isAugment a partir de basic_parameters
             # Configuração do pipeline de transformações com base em isAugment
@@ -194,7 +183,7 @@ def main():
             # model_ft = model_ft.to(device)
             date_now = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             #aumentar numeros de splits depois
-            kf = KFold(n_splits=10, shuffle=True, random_state=SEED)
+            kf = KFold(n_splits=5, shuffle=True, random_state=SEED)
             folds = kf.split(image_datasets)
             
             for fold, (train_idx, val_idx) in enumerate(folds):            
@@ -202,8 +191,8 @@ def main():
                 print(f'FOLD {fold}, Model: {model}, Augmentation: {type_aug}')
                 train_dataset = torch.utils.data.Subset(image_datasets, train_idx)
                 val_dataset = torch.utils.data.Subset(image_datasets, val_idx)
-                train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=basic_parameters.get('batch_size'), shuffle=True, num_workers=4)
-                val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=basic_parameters.get('batch_size'), shuffle=True, num_workers=4)
+                train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=basic_parameters.get('batch_size'), shuffle=True, num_workers=os.cpu_count() - 1)
+                val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=basic_parameters.get('batch_size'), shuffle=True, num_workers=os.cpu_count() - 1)
                 dataloaders_dict = {'train': train_loader, 'val': val_loader}
                 # Reiniciar o modelo em cada fold
                 #model_ft, input_size = initialize_model(basic_parameters.get('model_name'), basic_parameters.get('num_classes'))

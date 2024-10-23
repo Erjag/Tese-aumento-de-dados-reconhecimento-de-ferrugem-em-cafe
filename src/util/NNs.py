@@ -9,7 +9,7 @@ import os
 import sys
 import copy
 from sklearn import metrics
-from relatorios import plot_confusion_matrix, plot_loss_accuracy, generate_classification_report
+from .relatorios import plot_confusion_matrix, plot_loss_accuracy, generate_classification_report
 import matplotlib.pyplot as plt
 import numpy as np
 import random
@@ -99,101 +99,55 @@ def evaluate_model(model, dataloader, device):
 
     return y_true, y_pred
 
-def train_model(model, dataloaders, optimizer, basic_parameters, fold, date_now, device='gpu'):# Verifica se a GPU está disponível
-   
-    
-        
-        # Tempo total do treinamento (treinamento e validação)
+def train_model(model, dataloaders, optimizer, basic_parameters, fold, date_now, device):
+    # Definição do diretório de saída
+    output_dir = os.path.join("outputs", basic_parameters.get('model_name', ''))
+    os.makedirs(output_dir, exist_ok=True)  # Garante que o diretório será criado
+
+    # Cria a pasta para armazenar os resultados de cada teste
+    result_dir = os.path.join(output_dir, f"{basic_parameters.get('model_name', '')}_{date_now}")
+    os.makedirs(result_dir, exist_ok=True)
+
+    # Abertura de arquivo para registro de resultados
+    result_file = os.path.join(result_dir, f"{basic_parameters.get('model_name', '')}_fold_{fold}.txt")
+    with open(result_file, 'w') as f:
         since = time.time()
-
         best_model_wts = copy.deepcopy(model.state_dict())
-        best_acc = 0.0
         best_loss = float('inf')
+        best_acc = 0.0
 
-        train_loss_list = []
-        train_acc_list = []
-        val_loss_list = []
-        val_acc_list = []
-        
-        model_name = basic_parameters.get('model_name')
-        num_epochs = basic_parameters.get('epochs')
-        batch_size = basic_parameters.get('batch_size')
+        train_loss_list, train_acc_list = [], []
+        val_loss_list, val_acc_list = [], []
 
-        # Cria a pasta com o nome do modelo
-        output_dir = r'outputs/' + model_name
-        os.makedirs(output_dir, exist_ok=True)
-
-        # Cria a pasta para separar os testes
-        result_dir = output_dir + '\\' + model_name +'_' + date_now
-        os.makedirs(result_dir, exist_ok=True)
-
-        # Abre o arquivo para salvar o resultado
-        f = open(f'{result_dir}/{model_name}_fold_{fold}.txt', 'w')
-        
-        for epoch in range(num_epochs):
-            f.write(f'Epoch {epoch}/{num_epochs - 1}\n')
-            f.write('-' * 10 + '\n')
-
-            print(f'Epoch {epoch}/{num_epochs - 1}')
-            print('-' * 10)
+        for epoch in range(basic_parameters.get('epochs')):
+            print(f'Epoch {epoch}/{basic_parameters.get("epochs") - 1}\n{"-" * 10}')
+            f.write(f'Epoch {epoch}/{basic_parameters.get("epochs") - 1}\n{"-" * 10}\n')
 
             for phase in ['train', 'val']:
-                # Inicia contagem de tempo da época
-                time_epoch_start = time.time()
-
-                if phase == 'train':
-                    model.train()
-                else:
-                    model.eval()
-
-                # Perda (loss) nesta época
-                running_loss = 0.0
-                # Amostras classificadas corretamente nesta época
-                running_corrects = 0
+                model.train() if phase == 'train' else model.eval()
+                running_loss, running_corrects = 0.0, 0
 
                 for inputs, labels in dataloaders[phase]:
-                    inputs = inputs.to(device)
-                    labels = labels.to(device)
-
+                    inputs, labels = inputs.to(device), labels.to(device)
                     optimizer.zero_grad()
 
                     with torch.set_grad_enabled(phase == 'train'):
-                        # Get model outputs and calculate loss
-                        # Special case for inception because in training it has an auxiliary output. In train
-                        #   mode we calculate the loss by summing the final output and the auxiliary output
-                        #   but in testing we only consider the final output.
-                        if model_name == 'inception' and phase == 'train':
-                            # From https://discuss.pytorch.org/t/how-to-optimize-inception-model-with-auxiliary-classifiers/7958
-                            outputs, aux_outputs = model(inputs)
-                            loss1 = basic_parameters.get('criterion')(outputs, labels)
-                            loss2 = basic_parameters.get('criterion')(aux_outputs, labels)
-                            loss = loss1 + 0.4*loss2
-                        else:
-                            outputs = model(inputs)
-                            loss = basic_parameters.get('criterion')(outputs, labels)
-
+                        outputs = model(inputs)
+                        loss = basic_parameters.get('criterion')(outputs, labels)
                         _, preds = torch.max(outputs, 1)
 
-                        # backward + optimize only if in training phase
                         if phase == 'train':
                             loss.backward()
                             optimizer.step()
 
-                    # Atualiza a perda da época
                     running_loss += loss.item() * inputs.size(0)
-                    # Atualiza o número de amostras classificadas corretamente na época.
                     running_corrects += torch.sum(preds == labels.data)
-                # Perda desta época
+
                 epoch_loss = running_loss / len(dataloaders[phase].dataset)
-                # Acurácia desta época
                 epoch_acc = running_corrects.double() / len(dataloaders[phase].dataset)
 
-                # Tempo total desta época
-                time_epoch = time.time() - time_epoch_start
-
-                f.write(f'{phase.capitalize()} Loss: {epoch_loss:.4f} Acc: {epoch_acc:.4f} ({time_epoch:.4f} seconds) \n')
-
-                print(f'{phase.capitalize()} Loss: {epoch_loss:.4f} Acc: {epoch_acc:.4f} ({time_epoch:.4f} seconds)')
+                f.write(f'{phase.capitalize()} Loss: {epoch_loss:.4f} Acc: {epoch_acc:.4f}\n')
+                print(f'{phase.capitalize()} Loss: {epoch_loss:.4f} Acc: {epoch_acc:.4f}')
 
                 if phase == 'train':
                     train_loss_list.append(epoch_loss)
@@ -202,50 +156,34 @@ def train_model(model, dataloaders, optimizer, basic_parameters, fold, date_now,
                     val_loss_list.append(epoch_loss)
                     val_acc_list.append(epoch_acc)
 
-                if phase == 'val' and epoch_loss < best_loss:
-                    best_loss = epoch_loss
-                    best_acc = epoch_acc
-                    best_model_wts = copy.deepcopy(model.state_dict())
-
-            time_epoch = time.time() - since
-
-            f.write(f'Time: {time_epoch:.0f}s\n')
-            f.write('\n')
-
-            print(f'Time: {time_epoch:.0f}s')
-            print('\n')
+                    if epoch_loss < best_loss:
+                        best_loss = epoch_loss
+                        best_acc = epoch_acc
+                        best_model_wts = copy.deepcopy(model.state_dict())
 
         time_elapsed = time.time() - since
         f.write(f'Training complete in {time_elapsed // 60:.0f}m {time_elapsed % 60:.0f}s\n')
-        f.write(f'Number of epochs: {num_epochs}. Batch size: {batch_size}\n')
-        f.write(f'Best val loss: {best_loss:.4f} Best val acc: {best_acc:.4f}\n')
+        f.write(f'Best val Loss: {best_loss:.4f} Acc: {best_acc:.4f}\n')
 
         print(f'Training complete in {time_elapsed // 60:.0f}m {time_elapsed % 60:.0f}s')
-        print(f'Best val loss: {best_loss:.4f} Best val acc: {best_acc:.4f}')
+        print(f'Best val Loss: {best_loss:.4f} Acc: {best_acc:.4f}')
 
-        # Save the confusion matrix
-        y_true, y_pred = evaluate_model(model, dataloaders['val'], device=device)
-        # Confusion matrix
-        conf_mat_val = metrics.confusion_matrix(y_true, y_pred)
-        f.write(f'\nConfusion Matrix:\n{conf_mat_val}\n')
+        # Avaliação final e geração da matriz de confusão
+        y_true, y_pred = evaluate_model(model, dataloaders['val'], device)
+        conf_mat = metrics.confusion_matrix(y_true, y_pred)
+        f.write(f'\nConfusion Matrix:\n{conf_mat}\n')
 
-        # print(f'Confusion Matrix:\n{conf_mat_val}')
+        class_report = generate_classification_report(
+            model, dataloaders['val'], basic_parameters.get('class_names'), device
+        )
+        f.write(f'\nClassification Report:\n{class_report}\n')
 
-        # Classification report 
-        class_rep_val = generate_classification_report(model, dataloaders['val'],basic_parameters.get('class_names'), device)    
-        f.write(f'\nClassification report:\n{class_rep_val}\n')
+    # Salvar gráficos e matriz de confusão
+    plt.figure()
+    plot_confusion_matrix(conf_mat, classes=basic_parameters.get('class_names'))
+    plt.savefig(os.path.join(result_dir, f"{basic_parameters.get('model_name', '')}_fold_{fold}_confusion_matrix.pdf"))
 
+    plot_loss_accuracy(train_loss_list, val_loss_list, train_acc_list, val_acc_list, basic_parameters.get('model_name', ''), fold, result_dir)
 
-        f.close()
-
-        # Save the plot
-        plt.figure()
-        plot_confusion_matrix(conf_mat_val, classes=basic_parameters.get('class_names'))
-        plt.savefig(f'{result_dir}/{model_name}_fold_{fold}_cf_mat.pdf')
-
-        #Plota gráfico de loss e accuracy por epoch
-        plot_loss_accuracy(train_loss_list, val_loss_list, train_acc_list, val_acc_list, model_name, fold, result_dir)
-
-        # load best model weights
-        model.load_state_dict(best_model_wts)
-        return model
+    model.load_state_dict(best_model_wts)  # Carregar os melhores pesos do modelo
+    return model
