@@ -2,6 +2,8 @@ import cv2
 import numpy as np
 from PIL import Image
 import torchvision.transforms as transforms
+import random
+
 
 #################### Synthetic Shadows ############################################################
 class AddShadow:
@@ -9,7 +11,12 @@ class AddShadow:
         """
         Adiciona uma sombra sintética à imagem.
         A sombra é criada como um polígono com quatro pontos aleatórios.
+        print(f"AddShadow pre augmentation_transforms: {type(image)}")
         """
+        
+        if not isinstance(image, np.ndarray):
+            image = np.array(image)
+
         height, width = image.shape[:2]
         
         # Definir quantos vértices o polígono de sombra terá
@@ -37,6 +44,6 @@ class AddShadow:
 
         # Aplicar a sombra
         shadowed_image = add_shadow(image_rgb)
+        print(f"pos augmentation_transforms: {type(shadowed_image)}")
         """
-        return shadowed_image
-
+        return  Image.fromarray(shadowed_image)

@@ -52,8 +52,25 @@ MAGNIFICATION_SCALE = {
 }
 def get_scale_by_magnification(magnification):
     return MAGNIFICATION_SCALE[str(magnification)]
-
-
+def adjust_color_space(img):
+    return AdjustColorSpace()(img)
+def add_shadow(img):
+    return AddShadow()(img)
+def adjust_hue_saturation(img):
+    return AdjustHueSaturation(img)
+class ApplyDirectionalLightTransform:
+    def __init__(self, light_angle=45, light_intensity=0.8):
+        self.apply_light = ApplyDirectionalLight(light_angle, light_intensity)
+    def __call__(self, img):
+        return self.apply_light(img)   
+def debug_transform(img, stage=""):
+    if isinstance(img, Image.Image):
+        print(f"{stage}: Tipo = PIL.Image, Size = {img.size}, Mode = {img.mode}")
+    elif isinstance(img, np.ndarray):
+        print(f"{stage}: Tipo = np.ndarray, Shape = {img.shape}, Dtype = {img.dtype}")
+    else:
+        print(f"{stage}: Tipo inesperado = {type(img)}")
+    return img
 def main():
     #dataset_dir = "C:/Users/Augusto/Documents/tese/Tese-aumento-de-dados-reconhecimento-de-ferrugem-em-cafe/files/imagens/Photos"
     #model_dir = "C:/Users/Augusto/Documents/tese/Tese-aumento-de-dados-reconhecimento-de-ferrugem-em-cafe/files/classificadores"
@@ -64,8 +81,8 @@ def main():
     tile_size_original = int(scale * tile_size)
     patch_size = (tile_size_original, tile_size_original)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    # print('\nDevice: {0}'.format(device))
-    # print(torch.cuda.get_device_name(0))
+    #print('\nDevice: {0}'.format(device))
+    #print(torch.cuda.get_device_name(0))
     # !nvidia-smi
     SEED = 42
     random.seed(SEED)
@@ -77,8 +94,7 @@ def main():
     # Define o caminho base do diretório de imagens divididas 
     #base_dir = r'C:\Users\Augusto\Documents\tese\files\imagens\Photos'
     base_dir = r"C:/Users/Augusto/Documents/tese/Tese-aumento-de-dados-reconhecimento-de-ferrugem-em-cafe/files/imagens/Photos"
-    for model in ['resnet', 'alexnet', 'vgg', 'squeezenet', 'densenet', 'inception']:
-        
+    for model in ['resnet', 'alexnet', 'vgg', 'squeezenet', 'densenet', 'inception']:   
         basic_parameters = {
         #'num_classes' : 2,
         #'class_names': ['healthy', 'unhealthy'],
@@ -87,16 +103,15 @@ def main():
         'batch_size' : 32,
         'lr' : 0.001, # Taxa de aprendizado
         'mm' : 0.9, # Mommentum
-        'epochs' : 5,
+        'epochs' : 1,
         'model_name' : model, # Models to choose from [resnet, alexnet, vgg, squeezenet, densenet, inception]
         'criterion' : nn.CrossEntropyLoss(), # Função de perda
-        'data_augmentation' :['0','1','2','3','4','5']
+        'data_augmentation' :['3','4','5'] #'0','1','2','3','4','5']
         #['0','1','2','3'] # 0 - None, 1 - none + aug-basic, 2 - none + aug-avanced, 3 -aug-basic, 4 - aug-avanced, 5 - aug-basic + aug-avanced
         }
         model_ft, input_size = initialize_model(basic_parameters.get('model_name'), basic_parameters.get('num_classes'))
-            # Definir as transformações básicas
-        basic_augmentation = transforms.Compose([
-            transforms.Resize((224, 224)),
+        # Definir as transformações básicas
+        basic_augmentation = transforms.Compose([  
             transforms.RandomResizedCrop(input_size),
             transforms.RandomHorizontalFlip(),
             transforms.RandomVerticalFlip(),
@@ -104,12 +119,13 @@ def main():
             transforms.RandomRotation(30)
         ])
         advanced_augmentation = transforms.Compose([
-            transforms.Resize((224, 224)),
-            transforms.Lambda(lambda img: AdjustColorSpace()(img)),  # Chamada direta da classe
-            transforms.Lambda(lambda img: AddShadow()(img)),  # Chamada direta da classe
-            transforms.Lambda(lambda img: AdjustHueSaturation(img)),  # Chamada da versão parcial
-            transforms.Lambda(lambda img: ApplyDirectionalLight(img)),  # Chamada da versão parcial
-            transforms.GaussianBlur(kernel_size=(5, 9), sigma=(0.1, 5))  # Desfoque
+            
+            transforms.Lambda(adjust_color_space),
+            transforms.Lambda(add_shadow),
+            AdjustHueSaturation(hue_shift=10, saturation_scale=1.2, brightness_shift=20),
+            ApplyDirectionalLight(light_angle=120, light_intensity=0.9),
+            transforms.GaussianBlur(kernel_size=(5, 9), sigma=(0.1, 5)),  # Desfoque
+            transforms.Resize((224, 224))
         ]) 
         for type_aug in basic_parameters.get('data_augmentation'):
             # Obtenção do parâmetro isAugment a partir de basic_parameters
@@ -145,6 +161,8 @@ def main():
                         transforms.Resize(input_size),
                         transforms.CenterCrop(input_size),
                         ConditionalAugmentation(advanced_augmentation, probability=0.5),
+                        #transforms.Lambda(debug_transform),
+                        transforms.Resize((224, 224)),
                         transforms.ToTensor(),
                         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
                     ])
@@ -183,7 +201,7 @@ def main():
             # model_ft = model_ft.to(device)
             date_now = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
             #aumentar numeros de splits depois
-            kf = KFold(n_splits=5, shuffle=True, random_state=SEED)
+            kf = KFold(n_splits=2, shuffle=True, random_state=SEED)
             folds = kf.split(image_datasets)
             
             for fold, (train_idx, val_idx) in enumerate(folds):            
@@ -191,8 +209,8 @@ def main():
                 print(f'FOLD {fold}, Model: {model}, Augmentation: {type_aug}')
                 train_dataset = torch.utils.data.Subset(image_datasets, train_idx)
                 val_dataset = torch.utils.data.Subset(image_datasets, val_idx)
-                train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=basic_parameters.get('batch_size'), shuffle=True, num_workers=os.cpu_count() - 1)
-                val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=basic_parameters.get('batch_size'), shuffle=True, num_workers=os.cpu_count() - 1)
+                train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=basic_parameters.get('batch_size'), shuffle=True, num_workers=4,pin_memory=torch.cuda.is_available())
+                val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=basic_parameters.get('batch_size'), shuffle=False , num_workers=2,pin_memory=torch.cuda.is_available())
                 dataloaders_dict = {'train': train_loader, 'val': val_loader}
                 # Reiniciar o modelo em cada fold
                 #model_ft, input_size = initialize_model(basic_parameters.get('model_name'), basic_parameters.get('num_classes'))

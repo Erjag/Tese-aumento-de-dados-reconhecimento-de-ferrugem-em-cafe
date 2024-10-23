@@ -8,13 +8,13 @@ class AdjustColorSpace:
         """
         Converte a imagem para o espaço de cor LAB, ajusta os canais,
         e converte de volta para o espaço RGB.
+        print(f"AdjustColorSpace pre augmentation_transforms: {type(image)}")
         """
-
-        # Converter a imagem PIL para um array NumPy (RGB)
-        image_np = np.array(image)
+        if isinstance(image, Image.Image):
+            image = np.array(image)
 
         # Converter a imagem para o espaço de cores LAB
-        lab_image = cv2.cvtColor(image_np, cv2.COLOR_RGB2LAB)
+        lab_image = cv2.cvtColor(image, cv2.COLOR_RGB2LAB)
 
         # Separar os canais L, A, B
         l_channel, a_channel, b_channel = cv2.split(lab_image)
@@ -34,4 +34,5 @@ class AdjustColorSpace:
         adjusted_image = cv2.cvtColor(adjusted_lab_image, cv2.COLOR_LAB2RGB)
 
         # Converter de volta para PIL antes de retornar
+        #print(f"Após augmentation_transforms: {type(adjusted_image)}")
         return Image.fromarray(adjusted_image)

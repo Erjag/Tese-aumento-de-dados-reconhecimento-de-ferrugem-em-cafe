@@ -15,18 +15,23 @@ class AdjustHueSaturation:
         - hue_shift: Deslocamento da matiz em graus (de -180 a 180).
         - saturation_scale: Fator multiplicativo para a saturação (valores > 1 aumentam a saturação, valores < 1 a diminuem).
         - brightness_shift: Deslocamento do brilho (pode ser positivo ou negativo).
+        print(f"AdjustHueSaturation pre augmentation_transforms: {type(image)}")
         """
+        
+        if isinstance(image, Image.Image):
+            image = np.array(image)
+        height, width = image.shape[:2]
         # Converter a imagem para o espaço de cores HSV
         hsv_image = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
         
         # Ajustar a matiz
-        hsv_image[:, :, 0] = (hsv_image[:, :, 0].astype(int) + hue_shift) % 180
+        hsv_image[:, :, 0] = (hsv_image[:, :, 0].astype(int) + self.hue_shift) % 180
         
         # Ajustar a saturação
-        hsv_image[:, :, 1] = np.clip(hsv_image[:, :, 1].astype(float) * saturation_scale, 0, 255).astype(np.uint8)
+        hsv_image[:, :, 1] = np.clip(hsv_image[:, :, 1].astype(float) * self.saturation_scale, 0, 255).astype(np.uint8)
         
         # Ajustar o brilho (canal V no espaço HSV)
-        hsv_image[:, :, 2] = np.clip(hsv_image[:, :, 2].astype(int) + brightness_shift, 0, 255)
+        hsv_image[:, :, 2] = np.clip(hsv_image[:, :, 2].astype(int) + self.brightness_shift, 0, 255)
         
         # Converter de volta para o espaço de cores RGB
         adjusted_image = cv2.cvtColor(hsv_image, cv2.COLOR_HSV2RGB)
@@ -44,5 +49,7 @@ class AdjustHueSaturation:
 
             # Aplicar o ajuste de saturação e matiz
             adjusted_image = adjust_hue_saturation(image_rgb, hue_shift, saturation_scale, brightness_shift)
+            print(f"pre augmentation_transforms: {type(adjusted_image)}")
         """
-        return adjusted_image
+        
+        return  Image.fromarray(adjusted_image)
