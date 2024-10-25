@@ -31,6 +31,7 @@ import gc
 import torch
 import math
 import cv2
+import traceback
 
 
 torch.cuda.empty_cache()
@@ -38,6 +39,109 @@ torch.cuda.empty_cache()
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 gc.collect()
+
+def control_prob(augmentations, probabilities):
+    if len(augmentations) != len(probabilities):
+        raise ValueError("O número de augmentações e probabilidades deve ser o mesmo.")
+
+    def apply_transform(img):
+        for aug, prob in zip(augmentations, probabilities):
+            if random.random() < prob:
+                img = aug(img)  # Aplica a transformação
+        return img
+
+    return apply_transform
+def ensure_tensor(img):
+    """Converte para tensor se ainda não for."""
+    if isinstance(img, Image.Image):
+        return transforms.ToTensor()(img)
+    elif isinstance(img, np.ndarray):
+        if img.ndim == 2:  # Imagem em escala de cinza (H, W)
+            img = np.expand_dims(img, axis=-1)  # (H, W) -> (H, W, 1)
+        return torch.from_numpy(img).permute(2, 0, 1).float()   # (H, W, C) -> (C, H, W)
+    elif isinstance(img, torch.Tensor):
+        return img
+    else:
+            raise TypeError(f"[ERROR] Tipo inesperado: {type(img)}")
+
+def create_data_transforms(aug_type,input_size):
+    train_transforms = None
+    aug = [
+    "Sem Augmentação",                # Nenhuma transformação aplicada
+    "Base + Augmentação Básica",       # Augmentação básica adicionada à base
+    "Base + Augmentação Avançada",     # Augmentação avançada adicionada à base
+    "Somente Augmentação Básica",      # Apenas augmentação básica aplicada
+    "Somente Augmentação Avançada",    # Apenas augmentação avançada aplicada
+    "Augmentação Básica + Avançada"    # Ambas augmentações aplicadas juntas
+    ]
+    print(f"Augmentation {aug_type}: {aug[int(aug_type)]}")
+ 
+    base_augmentation = transforms.Compose([
+        transforms.Resize(input_size),  # Redimensiona para o input_size
+        transforms.CenterCrop(input_size),  # Faz um crop central para garantir o tamanho correto # Converte para tensor
+        ensure_tensor,
+        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])  # Normaliza com base no ImageNet
+    ])
+    basic_augmentation = transforms.Compose([  
+        transforms.RandomResizedCrop(input_size),
+        transforms.RandomHorizontalFlip(),
+        transforms.RandomVerticalFlip(),
+        transforms.RandomAffine(degrees=0, translate=(0.1, 0.1)),  # Translação
+        transforms.RandomRotation(30),
+        ensure_tensor
+    ])
+    advanced_augmentation = transforms.Compose([
+        AdjustColorSpace(),
+        AddShadow(),
+        AdjustHueSaturation(hue_shift=10, saturation_scale=1.2, brightness_shift=20),
+        ApplyDirectionalLight(light_angle=120, light_intensity=0.9),
+        transforms.GaussianBlur(kernel_size=(5, 9), sigma=(0.1, 5)),
+        ensure_tensor
+    ])
+    augmentations = [basic_augmentation, advanced_augmentation]
+    probabilities = [0.5, 0.5]
+    if aug_type == '0':
+        train_transforms = transforms.Compose([
+                base_augmentation                
+            ])
+    if aug_type == '1':
+        random_augment = control_prob([basic_augmentation], [0.5])
+        train_transforms = transforms.Compose([
+                        base_augmentation,
+                        control_prob([basic_augmentation], [0.5])
+                        #ConditionalAugmentation(basic_augmentation, probability=0.5),
+                    ])
+    if aug_type == '2':
+        random_augment = control_prob([advanced_augmentation], [0.5])
+        train_transforms = transforms.Compose([
+                        base_augmentation,
+                        random_augment
+                        #ConditionalAugmentation(advanced_augmentation, probability=0.5)
+                    ])
+    if aug_type == '3':
+        train_transforms = transforms.Compose([
+                        base_augmentation,
+                        basic_augmentation
+                    ])
+    if aug_type == '4':
+        train_transforms = transforms.Compose([
+                        base_augmentation,
+                        advanced_augmentation
+                    ])
+    if aug_type == '5':
+        random_augment = control_prob(augmentations, probabilities)
+        train_transforms = transforms.Compose([
+                        base_augmentation,
+                        random_augment
+                    ])
+    data_transforms = {
+                    'train': train_transforms,
+                    'val': transforms.Compose([
+                        base_augmentation
+                    ]),
+                }    
+    return data_transforms
+
 
 MAGNIFICATION_SCALE = {
     "20.0": 1.0,
@@ -52,25 +156,8 @@ MAGNIFICATION_SCALE = {
 }
 def get_scale_by_magnification(magnification):
     return MAGNIFICATION_SCALE[str(magnification)]
-def adjust_color_space(img):
-    return AdjustColorSpace()(img)
-def add_shadow(img):
-    return AddShadow()(img)
-def adjust_hue_saturation(img):
-    return AdjustHueSaturation(img)
-class ApplyDirectionalLightTransform:
-    def __init__(self, light_angle=45, light_intensity=0.8):
-        self.apply_light = ApplyDirectionalLight(light_angle, light_intensity)
-    def __call__(self, img):
-        return self.apply_light(img)   
-def debug_transform(img, stage=""):
-    if isinstance(img, Image.Image):
-        print(f"{stage}: Tipo = PIL.Image, Size = {img.size}, Mode = {img.mode}")
-    elif isinstance(img, np.ndarray):
-        print(f"{stage}: Tipo = np.ndarray, Shape = {img.shape}, Dtype = {img.dtype}")
-    else:
-        print(f"{stage}: Tipo inesperado = {type(img)}")
-    return img
+
+
 def main():
     #dataset_dir = "C:/Users/Augusto/Documents/tese/Tese-aumento-de-dados-reconhecimento-de-ferrugem-em-cafe/files/imagens/Photos"
     #model_dir = "C:/Users/Augusto/Documents/tese/Tese-aumento-de-dados-reconhecimento-de-ferrugem-em-cafe/files/classificadores"
@@ -94,7 +181,8 @@ def main():
     # Define o caminho base do diretório de imagens divididas 
     #base_dir = r'C:\Users\Augusto\Documents\tese\files\imagens\Photos'
     base_dir = r"C:/Users/Augusto/Documents/tese/Tese-aumento-de-dados-reconhecimento-de-ferrugem-em-cafe/files/imagens/Photos"
-    for model in ['resnet', 'alexnet', 'vgg', 'squeezenet', 'densenet', 'inception']:   
+    for model in ['resnet', 'alexnet', 'vgg', 'squeezenet', 'densenet']:#['resnet', 'alexnet', 'vgg', 'squeezenet', 'densenet', 'inception']:   
+        model_since = time.time()
         basic_parameters = {
         #'num_classes' : 2,
         #'class_names': ['healthy', 'unhealthy'],
@@ -106,96 +194,18 @@ def main():
         'epochs' : 1,
         'model_name' : model, # Models to choose from [resnet, alexnet, vgg, squeezenet, densenet, inception]
         'criterion' : nn.CrossEntropyLoss(), # Função de perda
-        'data_augmentation' :['3','4','5'] #'0','1','2','3','4','5']
+        'data_augmentation' :['2','3','4','5'] #'0','1','2','3','4','5']
         #['0','1','2','3'] # 0 - None, 1 - none + aug-basic, 2 - none + aug-avanced, 3 -aug-basic, 4 - aug-avanced, 5 - aug-basic + aug-avanced
         }
         model_ft, input_size = initialize_model(basic_parameters.get('model_name'), basic_parameters.get('num_classes'))
         # Definir as transformações básicas
-        basic_augmentation = transforms.Compose([  
-            transforms.RandomResizedCrop(input_size),
-            transforms.RandomHorizontalFlip(),
-            transforms.RandomVerticalFlip(),
-            transforms.RandomAffine(degrees=0, translate=(0.1, 0.1)),  # Translação
-            transforms.RandomRotation(30)
-        ])
-        advanced_augmentation = transforms.Compose([
-            
-            transforms.Lambda(adjust_color_space),
-            transforms.Lambda(add_shadow),
-            AdjustHueSaturation(hue_shift=10, saturation_scale=1.2, brightness_shift=20),
-            ApplyDirectionalLight(light_angle=120, light_intensity=0.9),
-            transforms.GaussianBlur(kernel_size=(5, 9), sigma=(0.1, 5)),  # Desfoque
-            transforms.Resize((224, 224))
-        ]) 
+        
         for type_aug in basic_parameters.get('data_augmentation'):
+            type_aug_since = time.time()
             # Obtenção do parâmetro isAugment a partir de basic_parameters
             # Configuração do pipeline de transformações com base em isAugment
-            if type_aug == '0':
-                # Sem aumento de dados
-                data_transforms = {
-                    'train': transforms.Compose([
-                        transforms.Resize(input_size),
-                        transforms.CenterCrop(input_size),
-                        transforms.ToTensor(),
-                        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-                    ]),
-                    'val': transforms.Compose([
-                        transforms.Resize(input_size),
-                        transforms.CenterCrop(input_size),
-                        transforms.ToTensor(),
-                        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-                    ]),
-                }
-            else:
-                # Aumento de dados com ou sem ConditionalAugmentation, dependendo de isAugment
-                if type_aug == '1':
-                    train_transforms = transforms.Compose([
-                        transforms.Resize(input_size),
-                        transforms.CenterCrop(input_size),
-                        ConditionalAugmentation(basic_augmentation, probability=0.5),
-                        transforms.ToTensor(),
-                        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-                    ])
-                elif type_aug == '2':
-                    train_transforms = transforms.Compose([
-                        transforms.Resize(input_size),
-                        transforms.CenterCrop(input_size),
-                        ConditionalAugmentation(advanced_augmentation, probability=0.5),
-                        #transforms.Lambda(debug_transform),
-                        transforms.Resize((224, 224)),
-                        transforms.ToTensor(),
-                        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-                    ])
-                elif type_aug == '3':
-                    train_transforms = transforms.Compose([
-                        basic_augmentation,
-                        transforms.ToTensor(),
-                        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-                    ])
-                elif type_aug == '4':
-                    train_transforms = transforms.Compose([
-                        basic_augmentation,
-                        transforms.ToTensor(),
-                        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-                    ])
-                elif type_aug == '5':
-                    # Exemplo: Adicionando GaussianBlur
-                    train_transforms = transforms.Compose([
-                        basic_augmentation,
-                        advanced_augmentation,
-                       
-                        transforms.ToTensor(),
-                        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-                    ])
-                data_transforms = {
-                    'train': train_transforms,
-                    'val': transforms.Compose([
-                        transforms.Resize(input_size),
-                        transforms.CenterCrop(input_size),
-                        transforms.ToTensor(),
-                        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-                    ]),
-                }
+            data_transforms = create_data_transforms(type_aug,input_size)
+
             image_datasets = datasets.ImageFolder(base_dir, data_transforms['train'])
             # # Pretrainned
             # model_ft = model_ft.to(device)
@@ -203,24 +213,41 @@ def main():
             #aumentar numeros de splits depois
             kf = KFold(n_splits=2, shuffle=True, random_state=SEED)
             folds = kf.split(image_datasets)
-            
-            for fold, (train_idx, val_idx) in enumerate(folds):            
-                model = basic_parameters.get('model_name')
-                print(f'FOLD {fold}, Model: {model}, Augmentation: {type_aug}')
-                train_dataset = torch.utils.data.Subset(image_datasets, train_idx)
-                val_dataset = torch.utils.data.Subset(image_datasets, val_idx)
-                train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=basic_parameters.get('batch_size'), shuffle=True, num_workers=4,pin_memory=torch.cuda.is_available())
-                val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=basic_parameters.get('batch_size'), shuffle=False , num_workers=2,pin_memory=torch.cuda.is_available())
-                dataloaders_dict = {'train': train_loader, 'val': val_loader}
-                # Reiniciar o modelo em cada fold
-                #model_ft, input_size = initialize_model(basic_parameters.get('model_name'), basic_parameters.get('num_classes'))
-                model_ft = model_ft.to(device)
-                # Imprime o modelo
-                # print(f'Model: {str(model_ft)}')
-                # Otimizador
-                optimizer = optim.SGD(model_ft.parameters(), lr=basic_parameters.get('lr'), momentum=basic_parameters.get('mm'))            
-                model_ft = train_model(model_ft, dataloaders_dict, optimizer, basic_parameters, fold,date_now, device)
-                model_ft.eval()
+            try:
+                for fold, (train_idx, val_idx) in enumerate(folds):            
+                    model = basic_parameters.get('model_name')
+                    print(f'FOLD {fold}, Model: {model}')
+                    
+                    train_dataset = torch.utils.data.Subset(image_datasets, train_idx)
+                    val_dataset = torch.utils.data.Subset(image_datasets, val_idx)
+                    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=basic_parameters.get('batch_size'), shuffle=True, num_workers=0,pin_memory=torch.cuda.is_available())
+                    val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=basic_parameters.get('batch_size'), shuffle=False , num_workers=0,pin_memory=torch.cuda.is_available())
+                    
+                    dataloaders_dict = {'train': train_loader, 'val': val_loader}
+
+                    # Reiniciar o modelo em cada fold
+                    #model_ft, input_size = initialize_model(basic_parameters.get('model_name'), basic_parameters.get('num_classes'))
+                    
+                    model_ft = model_ft.to(device)
+                    # Imprime o modelo
+                    # print(f'Model: {str(model_ft)}')
+                    # Otimizador
+                    optimizer = optim.SGD(model_ft.parameters(), lr=basic_parameters.get('lr'), momentum=basic_parameters.get('mm'))  
+                        
+                    model_ft = train_model(model_ft, dataloaders_dict, optimizer, basic_parameters, fold,date_now, device)
+                    model_ft.eval()
+                    print(f'\n{"-" * 50}\n')
+                    break
+            except Exception as e:
+                print(f"Erro: {e}")
+                traceback.print_exc()
+            type_aug_time = time.time() - type_aug_since
+            print(f"Tempo para Augmentation {type_aug}: {type_aug_time // 60:.0f}m {type_aug_time % 60:.0f}s\n{'-' * 50}\n")
+        model_time = time.time() - model_since
+        print(f"Tempo total para {model}: {model_time // 60:.0f}m {model_time % 60:.0f}s\n{'-' * 50}\n")
+        print(f'\n{"-" * 50}\n')
+
+                    
                 
                 
 if __name__ == "__main__":

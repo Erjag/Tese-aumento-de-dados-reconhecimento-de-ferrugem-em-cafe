@@ -20,7 +20,7 @@ class AdjustHueSaturation:
         
         if isinstance(image, Image.Image):
             image = np.array(image)
-        height, width = image.shape[:2]
+        #height, width = image.shape[:2]
         # Converter a imagem para o espaço de cores HSV
         hsv_image = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
         
@@ -36,12 +36,6 @@ class AdjustHueSaturation:
         # Converter de volta para o espaço de cores RGB
         adjusted_image = cv2.cvtColor(hsv_image, cv2.COLOR_HSV2RGB)
         """
-            # Carregar uma imagem de exemplo
-            image = cv2.imread('caminho/para/sua/imagem.jpg')
-
-            # Converter de BGR (OpenCV) para RGB (Matplotlib)
-            image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-
             # Definir parâmetros para variação de luz e sombra
             hue_shift = random.randint(-15, 15)           # Pequeno deslocamento aleatório de matiz
             saturation_scale = random.uniform(0.7, 1.3)   # Variação na saturação (mais ou menos intensa)

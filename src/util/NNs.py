@@ -14,6 +14,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import random
 from sklearn.model_selection import KFold
+from PIL import Image
 
 
 def initialize_model(model_name, num_classes):
@@ -106,6 +107,7 @@ def train_model(model, dataloaders, optimizer, basic_parameters, fold, date_now,
 
     # Cria a pasta para armazenar os resultados de cada teste
     result_dir = os.path.join(output_dir, f"{basic_parameters.get('model_name', '')}_{date_now}")
+    
     os.makedirs(result_dir, exist_ok=True)
 
     # Abertura de arquivo para registro de resultados
@@ -120,22 +122,27 @@ def train_model(model, dataloaders, optimizer, basic_parameters, fold, date_now,
         val_loss_list, val_acc_list = [], []
 
         for epoch in range(basic_parameters.get('epochs')):
-            print(f'Epoch {epoch}/{basic_parameters.get("epochs") - 1}\n{"-" * 10}')
+            #print(f'Epoch {epoch}/{basic_parameters.get("epochs") - 1}\n{"-" * 50}')
             f.write(f'Epoch {epoch}/{basic_parameters.get("epochs") - 1}\n{"-" * 10}\n')
 
             for phase in ['train', 'val']:
                 model.train() if phase == 'train' else model.eval()
                 running_loss, running_corrects = 0.0, 0
-
                 for inputs, labels in dataloaders[phase]:
+                    #print(f"Number of {phase} samples: {len(dataloaders_dict[phase].dataset)}")
                     inputs, labels = inputs.to(device), labels.to(device)
                     optimizer.zero_grad()
-
                     with torch.set_grad_enabled(phase == 'train'):
                         outputs = model(inputs)
-                        loss = basic_parameters.get('criterion')(outputs, labels)
+                        if isinstance(outputs, tuple):
+                            outputs, aux_outputs = outputs
+                            loss1 = basic_parameters.get('criterion')(outputs, labels)
+                            loss2 = basic_parameters.get('criterion')(aux_outputs, labels)
+                            loss = loss1 + 0.4 * loss2
+                        else:
+                            # Para outros modelos: Usar apenas a saída principal
+                            loss = basic_parameters.get('criterion')(outputs, labels)
                         _, preds = torch.max(outputs, 1)
-
                         if phase == 'train':
                             loss.backward()
                             optimizer.step()
@@ -147,7 +154,7 @@ def train_model(model, dataloaders, optimizer, basic_parameters, fold, date_now,
                 epoch_acc = running_corrects.double() / len(dataloaders[phase].dataset)
 
                 f.write(f'{phase.capitalize()} Loss: {epoch_loss:.4f} Acc: {epoch_acc:.4f}\n')
-                print(f'{phase.capitalize()} Loss: {epoch_loss:.4f} Acc: {epoch_acc:.4f}')
+                #print(f'{phase.capitalize()} Loss: {epoch_loss:.4f} Acc: {epoch_acc:.4f}')
 
                 if phase == 'train':
                     train_loss_list.append(epoch_loss)
@@ -176,14 +183,15 @@ def train_model(model, dataloaders, optimizer, basic_parameters, fold, date_now,
         class_report = generate_classification_report(
             model, dataloaders['val'], basic_parameters.get('class_names'), device
         )
+        print(f'\nClassification Report:\n{class_report}\n')
         f.write(f'\nClassification Report:\n{class_report}\n')
 
-    # Salvar gráficos e matriz de confusão
-    plt.figure()
-    plot_confusion_matrix(conf_mat, classes=basic_parameters.get('class_names'))
-    plt.savefig(os.path.join(result_dir, f"{basic_parameters.get('model_name', '')}_fold_{fold}_confusion_matrix.pdf"))
+    # # Salvar gráficos e matriz de confusão
+    # plt.figure()
+    # plot_confusion_matrix(conf_mat, classes=basic_parameters.get('class_names'))
+    # plt.savefig(os.path.join(result_dir, f"{basic_parameters.get('model_name', '')}_fold_{fold}_confusion_matrix.pdf"))
 
-    plot_loss_accuracy(train_loss_list, val_loss_list, train_acc_list, val_acc_list, basic_parameters.get('model_name', ''), fold, result_dir)
+    # plot_loss_accuracy(train_loss_list, val_loss_list, train_acc_list, val_acc_list, basic_parameters.get('model_name', ''), fold, result_dir)
 
     model.load_state_dict(best_model_wts)  # Carregar os melhores pesos do modelo
     return model

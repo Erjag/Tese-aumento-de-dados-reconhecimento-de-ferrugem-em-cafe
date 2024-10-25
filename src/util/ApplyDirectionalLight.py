@@ -38,7 +38,8 @@ class ApplyDirectionalLight:
         # Aplicar a máscara de iluminação à imagem
         light_mask = np.clip(light_mask, 0, 1)
         lighted_image = (image.astype(np.float32) * light_mask).astype(np.uint8)
-        
+        if lighted_image.shape[-1] > 4:
+            raise ValueError(f"Imagem com canais inválidos: {lighted_image.shape}")
         """
             # Carregar uma imagem de exemplo
             image = cv2.imread('caminho/para/sua/imagem.jpg')
