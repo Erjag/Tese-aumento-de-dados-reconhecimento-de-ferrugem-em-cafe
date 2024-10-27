@@ -162,6 +162,8 @@ def main():
     #dataset_dir = "C:/Users/Augusto/Documents/tese/Tese-aumento-de-dados-reconhecimento-de-ferrugem-em-cafe/files/imagens/Photos"
     #model_dir = "C:/Users/Augusto/Documents/tese/Tese-aumento-de-dados-reconhecimento-de-ferrugem-em-cafe/files/classificadores"
     #color_model = "LAB"
+    date_now = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    print(f"{'-' * 50}\nInício do treinamento : {date_now}\n{'-' * 50}")
     magnification = 0.625
     scale = get_scale_by_magnification(magnification)
     tile_size = 20
@@ -181,7 +183,7 @@ def main():
     # Define o caminho base do diretório de imagens divididas 
     #base_dir = r'C:\Users\Augusto\Documents\tese\files\imagens\Photos'
     base_dir = r"C:/Users/Augusto/Documents/tese/Tese-aumento-de-dados-reconhecimento-de-ferrugem-em-cafe/files/imagens/Photos"
-    for model in ['resnet', 'alexnet', 'vgg', 'squeezenet', 'densenet']:#['resnet', 'alexnet', 'vgg', 'squeezenet', 'densenet', 'inception']:   
+    for model in ['inception']:#['resnet', 'alexnet', 'vgg', 'squeezenet', 'densenet', 'inception']:   
         model_since = time.time()
         basic_parameters = {
         #'num_classes' : 2,
@@ -191,11 +193,11 @@ def main():
         'batch_size' : 32,
         'lr' : 0.001, # Taxa de aprendizado
         'mm' : 0.9, # Mommentum
-        'epochs' : 1,
+        'epochs' : 5,
         'model_name' : model, # Models to choose from [resnet, alexnet, vgg, squeezenet, densenet, inception]
         'criterion' : nn.CrossEntropyLoss(), # Função de perda
-        'data_augmentation' :['2','3','4','5'] #'0','1','2','3','4','5']
-        #['0','1','2','3'] # 0 - None, 1 - none + aug-basic, 2 - none + aug-avanced, 3 -aug-basic, 4 - aug-avanced, 5 - aug-basic + aug-avanced
+        'data_augmentation' :['0','1','2','3','4','5'] #['0','1','2','3','4','5']
+        # 0 - None, 1 - none + aug-basic, 2 - none + aug-avanced, 3 -aug-basic, 4 - aug-avanced, 5 - aug-basic + aug-avanced
         }
         model_ft, input_size = initialize_model(basic_parameters.get('model_name'), basic_parameters.get('num_classes'))
         # Definir as transformações básicas
@@ -236,16 +238,16 @@ def main():
                         
                     model_ft = train_model(model_ft, dataloaders_dict, optimizer, basic_parameters, fold,date_now, device)
                     model_ft.eval()
-                    print(f'\n{"-" * 50}\n')
-                    break
+                    #print(f'\n{"-" * 50}\n')
+                    
             except Exception as e:
                 print(f"Erro: {e}")
                 traceback.print_exc()
             type_aug_time = time.time() - type_aug_since
-            print(f"Tempo para Augmentation {type_aug}: {type_aug_time // 60:.0f}m {type_aug_time % 60:.0f}s\n{'-' * 50}\n")
+            print(f"Tempo para Augmentation {type_aug}: {type_aug_time // 60:.0f}m {type_aug_time % 60:.0f}s\n{'-' * 50}")
         model_time = time.time() - model_since
-        print(f"Tempo total para {model}: {model_time // 60:.0f}m {model_time % 60:.0f}s\n{'-' * 50}\n")
-        print(f'\n{"-" * 50}\n')
+        print(f"Tempo total para {model}: {model_time // 60:.0f}m {model_time % 60:.0f}s\n{'-' * 50}")
+        print(f'\n{"-" * 50}')
 
                     
                 

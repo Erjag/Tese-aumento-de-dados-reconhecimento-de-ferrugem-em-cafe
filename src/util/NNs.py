@@ -129,7 +129,7 @@ def train_model(model, dataloaders, optimizer, basic_parameters, fold, date_now,
                 model.train() if phase == 'train' else model.eval()
                 running_loss, running_corrects = 0.0, 0
                 for inputs, labels in dataloaders[phase]:
-                    #print(f"Number of {phase} samples: {len(dataloaders_dict[phase].dataset)}")
+                    #print(f"Number of {phase} samples: {len(dataloaders[phase].dataset)}")
                     inputs, labels = inputs.to(device), labels.to(device)
                     optimizer.zero_grad()
                     with torch.set_grad_enabled(phase == 'train'):
@@ -154,7 +154,7 @@ def train_model(model, dataloaders, optimizer, basic_parameters, fold, date_now,
                 epoch_acc = running_corrects.double() / len(dataloaders[phase].dataset)
 
                 f.write(f'{phase.capitalize()} Loss: {epoch_loss:.4f} Acc: {epoch_acc:.4f}\n')
-                #print(f'{phase.capitalize()} Loss: {epoch_loss:.4f} Acc: {epoch_acc:.4f}')
+                print(f'{phase.capitalize()} Loss: {epoch_loss:.4f} Acc: {epoch_acc:.4f}')
 
                 if phase == 'train':
                     train_loss_list.append(epoch_loss)
@@ -172,8 +172,8 @@ def train_model(model, dataloaders, optimizer, basic_parameters, fold, date_now,
         f.write(f'Training complete in {time_elapsed // 60:.0f}m {time_elapsed % 60:.0f}s\n')
         f.write(f'Best val Loss: {best_loss:.4f} Acc: {best_acc:.4f}\n')
 
-        print(f'Training complete in {time_elapsed // 60:.0f}m {time_elapsed % 60:.0f}s')
-        print(f'Best val Loss: {best_loss:.4f} Acc: {best_acc:.4f}')
+        #print(f'Training complete in {time_elapsed // 60:.0f}m {time_elapsed % 60:.0f}s')
+        #print(f'Best val Loss: {best_loss:.4f} Acc: {best_acc:.4f}')
 
         # Avaliação final e geração da matriz de confusão
         y_true, y_pred = evaluate_model(model, dataloaders['val'], device)
@@ -183,12 +183,12 @@ def train_model(model, dataloaders, optimizer, basic_parameters, fold, date_now,
         class_report = generate_classification_report(
             model, dataloaders['val'], basic_parameters.get('class_names'), device
         )
-        print(f'\nClassification Report:\n{class_report}\n')
+        #print(f'\nClassification Report:\n{class_report}\n')
         f.write(f'\nClassification Report:\n{class_report}\n')
 
     # # Salvar gráficos e matriz de confusão
     # plt.figure()
-    # plot_confusion_matrix(conf_mat, classes=basic_parameters.get('class_names'))
+    plot_confusion_matrix(conf_mat, classes=basic_parameters.get('class_names'))
     # plt.savefig(os.path.join(result_dir, f"{basic_parameters.get('model_name', '')}_fold_{fold}_confusion_matrix.pdf"))
 
     # plot_loss_accuracy(train_loss_list, val_loss_list, train_acc_list, val_acc_list, basic_parameters.get('model_name', ''), fold, result_dir)
